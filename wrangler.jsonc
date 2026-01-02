@@ -1,0 +1,5 @@
+{
+  "name": "mc-keygen-bot",
+  "compatibility_date": "2025-12-31", // O‘tgan yil oxiri
+  "main": "index.js"
+}
