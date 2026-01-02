@@ -8,16 +8,21 @@ export default {
         const body = await request.json();
         code = body.license || body.token || "no_code";
       } catch (e) {
-        // agar json bo‘lmasa ham ishlasin
+        // JSON bo‘lmasa ham davom etamiz
       }
-
       console.log(`Received code: ${code}`);
 
-      const responseText = "true:valid:MyLicense2025:forever:2026";
-      
-      return new Response(responseText, {
+      // Plugin kutayotgan JSON formatdagi javob
+      const fakeResponse = {
+        salt: "valid",
+        token: "forever2026"
+      };
+
+      return new Response(JSON.stringify(fakeResponse), {
         status: 200,
-        headers: { "Content-Type": "text/plain" }
+        headers: { 
+          "Content-Type": "application/json"
+        }
       });
     }
 
