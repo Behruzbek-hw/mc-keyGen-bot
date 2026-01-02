@@ -1,5 +1,0 @@
-{
-  "name": "mc-auth-fake",  // Sizning Worker nomingiz (dashboard da ko'rsatilgan nom bilan bir xil bo'lsin)
-  "compatibility_date": "2026-01-03",  // Bugungi sana (yoki keyingi kun)
-  "main": "index.js"  // Bu — eng muhim qism! index.js ni entry-point deb belgilaydi
-}
