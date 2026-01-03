@@ -1,31 +1,76 @@
-export default {
-  async fetch(request, env, ctx) {
-    const url = new URL(request.url);
-    
-    if (url.pathname === "/sendValue" && request.method === "POST") {
-      let code = "unknown";
-      try {
-        const body = await request.json();
-        code = body.license || body.token || "no_code";
-      } catch (e) {
-        // JSON bo‘lmasa ham davom etamiz
-      }
-      console.log(`Received code: ${code}`);
+const express = require("express");
+const crypto = require("crypto");
 
-      // Plugin kutayotgan JSON formatdagi javob
-      const fakeResponse = {
-        salt: "valid",
-        token: "forever2026"
-      };
+const app = express();
+app.use(express.json());
 
-      return new Response(JSON.stringify(fakeResponse), {
-        status: 200,
-        headers: { 
-          "Content-Type": "application/json"
-        }
+/**
+ * ODDIY DATABASE (test uchun)
+ * Real holatda DB ishlatiladi
+ */
+const VALID_LICENSES = new Set([
+  "TEST-1234",
+  "SERVER-5678"
+]);
+
+const TOKENS = new Map(); // token -> server info
+
+function generateToken() {
+  return crypto.randomBytes(32).toString("hex");
+}
+
+app.post("/sendValue", (req, res) => {
+  const { license, token } = req.body;
+
+  /**
+   * 1. TOKEN BILAN TEKSHIRISH
+   */
+  if (token) {
+    if (TOKENS.has(token)) {
+      return res.json({
+        salt: "ok",
+        token: token
       });
     }
 
-    return new Response("Not found", { status: 404 });
+    return res.status(401).json({
+      error: "Invalid token",
+      code: "invalid_token"
+    });
   }
-};
+
+  /**
+   * 2. LICENSE BILAN TEKSHIRISH
+   */
+  if (!license) {
+    return res.status(400).json({
+      error: "Missing license",
+      code: "invalid_code"
+    });
+  }
+
+  if (!VALID_LICENSES.has(license)) {
+    return res.status(401).json({
+      error: "Invalid license",
+      code: "invalid_code"
+    });
+  }
+
+  /**
+   * 3. TOKEN YARATISH
+   */
+  const newToken = generateToken();
+  TOKENS.set(newToken, {
+    created: Date.now(),
+    license
+  });
+
+  return res.json({
+    salt: "authorized",
+    token: newToken
+  });
+});
+
+app.listen(8080, () => {
+  console.log("Auth server running on port 8080");
+});
