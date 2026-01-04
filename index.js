@@ -1,4 +1,4 @@
-// Cloudflare Worker — AdventureCore plugin bilan 100% ISHLAYDIGAN YANGILANGAN VERSIYA (KV o'chirilgan, xatolar hal qilingan)
+// Cloudflare Worker — AdventureCore uchun 3 QATLAMLI MOSLASHTIRILGAN VERSIYA (doim success, 3 ta server roli)
 
 export default {
   async fetch(request, env) {
@@ -6,40 +6,43 @@ export default {
     const path = url.pathname;
 
     if (path === "/sendValue" && request.method === "POST") {
-      return handleSendValue(request, env);
+      return handleSendValue(request);  // Server A va B uchun (initial va refresh)
     }
 
     if (path === "/auth/init" && request.method === "POST") {
-      return authInit(request, env);
+      return authInit(request);  // Server A uchun (initial auth)
     }
+
     if (path === "/auth/runtime" && request.method === "POST") {
-      return authRuntime(request, env);
+      return authRuntime(request);  // Server C uchun (runtime validation)
     }
+
     if (path === "/auth/enforce") {
       return authEnforce();
     }
+
     if (path.startsWith("/admin")) {
-      return admin(request, env);
+      return new Response("Admin OK");
     }
 
     return new Response("Not Found", { status: 404 });
   }
 };
 
-async function handleSendValue(request, env) {
+async function handleSendValue(request) {
   try {
-    const body = await request.json();
-    console.log("Worker received body: " + JSON.stringify(body));  // Logs uchun
+    const body = await request.json().catch(() => ({}));  // Body bo'sh bo'lsa ham ishlaydi
+    console.log("Received /sendValue: " + JSON.stringify(body));
 
-    let returnToken = crypto.randomUUID().replaceAll("-", "");  // Yangi token
+    let returnToken = "fixed-token-for-test";  // Doim shu token (test uchun)
     const saltValue = "success";  // Doim success
 
-    // Har qanday input uchun valid – check yo'q
-    if (body.license && typeof body.license === "string") {
-      console.log("New token for license: " + body.license.trim());
-    } else if (body.token && typeof body.token === "string") {
-      returnToken = body.token.trim();  // Eski tokenni qaytar
-      console.log("Using token: " + returnToken);
+    // Litsenziya yoki token bo'lsa, log qilamiz, lekin check yo'q
+    if (body.license) {
+      console.log("Initial auth for license: " + body.license);
+    } else if (body.token) {
+      returnToken = body.token;  // Refresh: eski tokenni qaytaramiz
+      console.log("Token refresh: " + body.token);
     }
 
     const responseData = {
@@ -47,45 +50,30 @@ async function handleSendValue(request, env) {
       salt: saltValue
     };
     console.log("Returning: " + JSON.stringify(responseData));
-
     return jsonResponse(responseData);
-
   } catch (error) {
-    console.error("Error: " + error.message);
+    console.error("Error in /sendValue: " + error.message);
     return jsonResponse({ error: "Server error", code: "server_error" }, 500);
   }
 }
 
-// Boshqa endpointlar (KV siz moslashtirilgan)
-async function authInit(request, env) {
-  if (request.method !== "POST") return jsonResponse({ error: "Method not allowed" }, 405);
+async function authInit(request) {
   const body = await request.json().catch(() => ({}));
-  if (!body.license) return jsonResponse({ error: "Missing license" }, 400);
+  console.log("Received /auth/init: " + JSON.stringify(body));
 
-  const token = crypto.randomUUID().replaceAll("-", "");
+  const token = "fixed-token-for-test";  // Doim shu
   return jsonResponse({ authorized: true, token, expires_in: null });
 }
 
-async function authRuntime(request, env) {
-  if (request.method !== "POST") return jsonResponse({ allowed: false }, 405);
+async function authRuntime(request) {
   const body = await request.json().catch(() => ({}));
-  if (!body.token || !body.action) return jsonResponse({ allowed: false }, 400);
+  console.log("Received /auth/runtime: " + JSON.stringify(body));
 
-  return jsonResponse({ allowed: true });
+  return jsonResponse({ allowed: true });  // Doim true (validation muvaffaqiyatli)
 }
 
 function authEnforce() {
   return jsonResponse({ action: "rollback", target: "spawn" });
-}
-
-async function admin(request, env) {
-  const auth = request.headers.get("Authorization");
-  if (auth !== `Bearer ${env.ADMIN_SECRET}`) return new Response("Forbidden", { status: 403 });
-
-  if (request.method === "POST") {
-    return jsonResponse({ success: true });  // KV yo'q
-  }
-  return new Response("Admin OK");
 }
 
 function jsonResponse(data, status = 200) {
