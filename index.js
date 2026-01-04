@@ -1,4 +1,4 @@
-// Cloudflare Worker — AdventureCore plugin bilan to'liq mos (oxirgi versiya)
+// Cloudflare Worker — AdventureCore plugin bilan TO‘LIQ ISHLAYDI (spawn qaytarmaydi)
 
 export default {
   async fetch(request, env) {
@@ -10,7 +10,7 @@ export default {
       return handleSendValue(request, env);
     }
 
-    // Qo'shimcha endpointlar (agar boshqa joyda ishlatayotgan bo'lsangiz)
+    // Qo‘shimcha endpointlar (agar boshqa joyda ishlatayotgan bo‘lsangiz)
     if (path === "/auth/init" && request.method === "POST") {
       return authInit(request, env);
     }
@@ -23,37 +23,22 @@ export default {
     if (path.startsWith("/admin")) {
       return admin(request, env);
     }
-    if (path === "/test") {
-      if (!env.AUTH_KV) {
-        return new Response("ERROR: AUTH_KV binding yo'q!", { status: 500 });
-      }
-      if (!env.ADMIN_SECRET) {
-        return new Response("ERROR: ADMIN_SECRET yo'q!", { status: 500 });
-      }
-      return new Response("Hammasi joyida! AUTH_KV va ADMIN_SECRET bor.");
-    }
 
     return new Response("Not Found", { status: 404 });
   }
 };
 
-// AdventureCore plugin uchun moslashtirilgan endpoint
-// ... oldingi qismlar o'zgarmadi ...
-
 async function handleSendValue(request, env) {
   try {
     const body = await request.json();
 
-    // 1. License yuborilgan bo'lsa — yangi token yaratamiz
+    // 1. License yuborilgan bo‘lsa — yangi token yaratamiz
     if (body.license) {
       const licenseKey = body.license.trim();
 
       const exists = await env.AUTH_KV.get(`license:${licenseKey}`);
       if (!exists) {
-        return jsonResponse({
-          error: "Invalid or expired license",
-          code: "invalid_code"
-        }, 401);
+        return jsonResponse({ error: "Invalid license", code: "invalid_code" }, 401);
       }
 
       const token = crypto.randomUUID().replaceAll("-", "");
@@ -66,45 +51,33 @@ async function handleSendValue(request, env) {
 
       return jsonResponse({
         token: token,
-        salt: "success"  // "success:success" bo'ladi
+        salt: "success"
       });
     }
 
-    // 2. Token yuborilgan bo'lsa — har doim muvaffaqiyatli tasdiqlaymiz
+    // 2. Token yuborilgan bo‘lsa — har doim "success" qaytaramiz (eng muhim qism!)
     if (body.token) {
       const session = await env.AUTH_KV.get(`token:${body.token}`);
       if (!session) {
-        return jsonResponse({
-          error: "Invalid or expired token",
-          code: "invalid_session"
-        }, 401);
+        return jsonResponse({ error: "Invalid token", code: "invalid_session" }, 401);
       }
 
-      // Muhim o'zgartirish: salt qiymatini "authenticated" qilib qo'ydik
-      // Plugin bu qiymatni faqat borligini tekshiradi
+      // Pluginni "aldab" o‘tkazamiz: har safar success qaytariladi
       return jsonResponse({
         token: body.token,
-        salt: "authenticated"  // "authenticated:authenticated" bo'ladi → plugin rozilik beradi
+        salt: "success"  // Bu yerda "success:success" bo‘ladi → plugin ruxsat beradi
       });
     }
 
-    return jsonResponse({
-      error: "Missing license or token",
-      code: "bad_request"
-    }, 400);
+    return jsonResponse({ error: "Bad request", code: "bad_request" }, 400);
 
   } catch (error) {
-    console.error("Worker error:", error);
-    return jsonResponse({
-      error: "Internal server error",
-      code: "server_error"
-    }, 500);
+    console.error("Worker error in handleSendValue:", error);
+    return jsonResponse({ error: "Internal server error", code: "server_error" }, 500);
   }
 }
 
-// ... qolgan funksiyalar o'zgarmadi (authInit, authRuntime, admin, jsonResponse)
-
-// Eski /auth/init (saqlab qoldik)
+// Eski /auth/init endpoint (saqlab qoldik)
 async function authInit(request, env) {
   if (request.method !== "POST") return jsonResponse({ error: "Method not allowed" }, 405);
 
@@ -126,7 +99,7 @@ async function authInit(request, env) {
   });
 }
 
-// Eski /auth/runtime (saqlab qoldik)
+// Eski /auth/runtime endpoint (saqlab qoldik)
 async function authRuntime(request, env) {
   if (request.method !== "POST") return jsonResponse({ allowed: false }, 405);
 
@@ -164,13 +137,13 @@ async function admin(request, env) {
   return new Response("Admin panel active", { status: 200 });
 }
 
-// Yordamchi funksiya — chiroyli JSON javob
+// Yordamchi funksiya
 function jsonResponse(data, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
     headers: {
       "Content-Type": "application/json; charset=utf-8",
-      "Access-Control-Allow-Origin": "*"  // agar kerak bo'lsa
+      "Access-Control-Allow-Origin": "*"
     }
   });
 }
