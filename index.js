@@ -23,6 +23,15 @@ export default {
     if (path.startsWith("/admin")) {
       return admin(request, env);
     }
+    if (path === "/test") {
+      if (!env.AUTH_KV) {
+        return new Response("ERROR: AUTH_KV binding yo'q!", { status: 500 });
+      }
+      if (!env.ADMIN_SECRET) {
+        return new Response("ERROR: ADMIN_SECRET yo'q!", { status: 500 });
+      }
+      return new Response("Hammasi joyida! AUTH_KV va ADMIN_SECRET bor.");
+    }
 
     return new Response("Not Found", { status: 404 });
   }
