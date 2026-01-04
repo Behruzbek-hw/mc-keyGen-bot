@@ -38,15 +38,16 @@ export default {
 };
 
 // AdventureCore plugin uchun moslashtirilgan endpoint
+// ... oldingi qismlar o'zgarmadi ...
+
 async function handleSendValue(request, env) {
   try {
     const body = await request.json();
 
-    // 1. License yuborilgan bo'lsa → yangi token yaratamiz
+    // 1. License yuborilgan bo'lsa — yangi token yaratamiz
     if (body.license) {
       const licenseKey = body.license.trim();
 
-      // License KV da mavjudligini tekshirish
       const exists = await env.AUTH_KV.get(`license:${licenseKey}`);
       if (!exists) {
         return jsonResponse({
@@ -55,27 +56,21 @@ async function handleSendValue(request, env) {
         }, 401);
       }
 
-      // Yangi token yaratish
       const token = crypto.randomUUID().replaceAll("-", "");
 
       await env.AUTH_KV.put(
         `token:${token}`,
-        JSON.stringify({
-          license: licenseKey,
-          created: Date.now()
-        }),
-        { expirationTtl: 3600 } // 1 soat yashaydi
+        JSON.stringify({ license: licenseKey, created: Date.now() }),
+        { expirationTtl: 3600 }
       );
 
-      // Plugin kutayotgan format: {"token": "...", "salt": "biror_narsa"}
-      // Keyin plugin ichida "salt:salt" qilib qaytaradi → "success:success"
       return jsonResponse({
         token: token,
-        salt: "success"
+        salt: "success"  // "success:success" bo'ladi
       });
     }
 
-    // 2. Token yuborilgan bo'lsa → faqat tasdiqlaymiz
+    // 2. Token yuborilgan bo'lsa — har doim muvaffaqiyatli tasdiqlaymiz
     if (body.token) {
       const session = await env.AUTH_KV.get(`token:${body.token}`);
       if (!session) {
@@ -85,28 +80,29 @@ async function handleSendValue(request, env) {
         }, 401);
       }
 
-      // Token hali ishlayapti → tasdiqlaymiz
+      // Muhim o'zgartirish: salt qiymatini "authenticated" qilib qo'ydik
+      // Plugin bu qiymatni faqat borligini tekshiradi
       return jsonResponse({
         token: body.token,
-        salt: "valid"
+        salt: "authenticated"  // "authenticated:authenticated" bo'ladi → plugin rozilik beradi
       });
     }
 
-    // Hech narsa topilmagan bo'lsa
     return jsonResponse({
       error: "Missing license or token",
       code: "bad_request"
     }, 400);
 
   } catch (error) {
-    // Worker ichidagi xatoliklar uchun log
-    console.error("Worker error in /sendValue:", error);
+    console.error("Worker error:", error);
     return jsonResponse({
       error: "Internal server error",
       code: "server_error"
     }, 500);
   }
 }
+
+// ... qolgan funksiyalar o'zgarmadi (authInit, authRuntime, admin, jsonResponse)
 
 // Eski /auth/init (saqlab qoldik)
 async function authInit(request, env) {
