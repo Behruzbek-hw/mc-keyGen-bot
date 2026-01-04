@@ -1,4 +1,4 @@
-// Cloudflare Worker — AdventureCore plugin bilan 100% ISHLAYDIGAN OXIRGI VERSIYA
+// Cloudflare Worker — AdventureCore plugin bilan 100% ISHLAYDIGAN FINAL VERSIYA
 
 export default {
   async fetch(request, env) {
@@ -29,48 +29,59 @@ export default {
 async function handleSendValue(request, env) {
   try {
     const body = await request.json();
+    console.log("Worker received body: " + JSON.stringify(body));  // Dashboard Logs da ko'rinadi
 
-    let returnToken = null;
-    const saltValue = "success";  // Har doim "success:success" bo'ladi
+    let returnToken = "authenticated";  // Default dummy token
+    const saltValue = "success";  // Har doim success:success bo'ladi
+
+    let valid = false;
 
     // License yuborilgan bo'lsa
-    if (body.license && typeof body.license === "string" && body.license.trim() !== "") {
+    if (body.license && typeof body.license === "string") {
       const licenseKey = body.license.trim();
-      const exists = await env.AUTH_KV.get(`license:${licenseKey}`);
-      if (!exists) {
-        return jsonResponse({ error: "Invalid license", code: "invalid_code" }, 401);
+      if (licenseKey !== "") {
+        const exists = await env.AUTH_KV.get(`license:${licenseKey}`);
+        if (exists) {
+          returnToken = crypto.randomUUID().replaceAll("-", "");
+          await env.AUTH_KV.put(`token:${returnToken}`, JSON.stringify({ license: licenseKey, created: Date.now() }), { expirationTtl: 3600 });
+          valid = true;
+          console.log("New token created for license: " + licenseKey);
+        }
       }
-      // Yangi token yaratamiz
-      returnToken = crypto.randomUUID().replaceAll("-", "");
-      await env.AUTH_KV.put(`token:${returnToken}`, JSON.stringify({ license: licenseKey, created: Date.now() }), { expirationTtl: 3600 });
     }
     // Token yuborilgan bo'lsa
-    else if (body.token && typeof body.token === "string" && body.token.trim() !== "") {
+    else if (body.token && typeof body.token === "string") {
       const tokenKey = body.token.trim();
-      const session = await env.AUTH_KV.get(`token:${tokenKey}`);
-      if (!session) {
-        return jsonResponse({ error: "Invalid token", code: "invalid_session" }, 401);
+      if (tokenKey !== "") {
+        const session = await env.AUTH_KV.get(`token:${tokenKey}`);
+        if (session) {
+          returnToken = tokenKey;
+          valid = true;
+          console.log("Token validated: " + tokenKey);
+        }
       }
-      returnToken = tokenKey;  // Eski tokenni qaytaramiz
-    }
-    // Hech qaysi yo'q
-    else {
-      return jsonResponse({ error: "Missing license or token", code: "bad_request" }, 400);
     }
 
-    // Har doim to'g'ri format: {"token": "...", "salt": "success"}
-    return jsonResponse({
+    if (!valid) {
+      console.log("Invalid request - returning error");
+      return jsonResponse({ error: "Invalid license or token", code: "invalid_code" }, 401);
+    }
+
+    const responseData = {
       token: returnToken,
       salt: saltValue
-    });
+    };
+    console.log("Worker returning: " + JSON.stringify(responseData));
+
+    return jsonResponse(responseData);
 
   } catch (error) {
-    console.error("Worker xatosi (/sendValue):", error);
+    console.error("Worker critical error: " + error.message);
     return jsonResponse({ error: "Server error", code: "server_error" }, 500);
   }
 }
 
-// Qo'shimcha endpointlar (eski usullar uchun)
+// Qo'shimcha endpointlar (eski usullar uchun saqlab qoldik)
 async function authInit(request, env) {
   if (request.method !== "POST") return jsonResponse({ error: "Method not allowed" }, 405);
   const body = await request.json().catch(() => ({}));
