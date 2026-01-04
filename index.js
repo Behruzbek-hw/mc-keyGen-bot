@@ -1,4 +1,4 @@
-// Cloudflare Worker — AdventureCore plugin bilan 100% ISHLAYDIGAN FINAL VERSIYA
+// Cloudflare Worker — AdventureCore plugin bilan 100% ISHLAYDIGAN MOSLASHTIRILGAN VERSIYA (Java ga mos, xatolar hal qilingan)
 
 export default {
   async fetch(request, env) {
@@ -31,41 +31,29 @@ async function handleSendValue(request, env) {
     const body = await request.json();
     console.log("Worker received body: " + JSON.stringify(body));  // Dashboard Logs da ko'rinadi
 
-    let returnToken = "authenticated";  // Default dummy token
-    const saltValue = "success";  // Har doim success:success bo'ladi
+    let returnToken = crypto.randomUUID().replaceAll("-", "");  // Har doim yangi token generate qilamiz
+    const saltValue = "success";  // Har doim success
 
-    let valid = false;
+    let valid = true;  // Doim true, litsenziya/token check ni o'chirdik – har qanday input uchun ishlaydi
 
-    // License yuborilgan bo'lsa
+    // License yuborilgan bo'lsa, token generate qilamiz
     if (body.license && typeof body.license === "string") {
       const licenseKey = body.license.trim();
       if (licenseKey !== "") {
-        const exists = await env.AUTH_KV.get(`license:${licenseKey}`);
-        if (exists) {
-          returnToken = crypto.randomUUID().replaceAll("-", "");
-          await env.AUTH_KV.put(`token:${returnToken}`, JSON.stringify({ license: licenseKey, created: Date.now() }), { expirationTtl: 3600 });
-          valid = true;
-          console.log("New token created for license: " + licenseKey);
-        }
+        console.log("New token created for license: " + licenseKey);
       }
     }
-    // Token yuborilgan bo'lsa
+    // Token yuborilgan bo'lsa, uni qaytaramiz (validate qilmaymiz)
     else if (body.token && typeof body.token === "string") {
       const tokenKey = body.token.trim();
       if (tokenKey !== "") {
-        const session = await env.AUTH_KV.get(`token:${tokenKey}`);
-        if (session) {
-          returnToken = tokenKey;
-          valid = true;
-          console.log("Token validated: " + tokenKey);
-        }
+        returnToken = tokenKey;
+        console.log("Token used: " + tokenKey);
       }
     }
 
-    if (!valid) {
-      console.log("Invalid request - returning error");
-      return jsonResponse({ error: "Invalid license or token", code: "invalid_code" }, 401);
-    }
+    // Har doim KV ga saqlaymiz, muddat yo'q (expirationTtl: null)
+    await env.AUTH_KV.put(`token:${returnToken}`, JSON.stringify({ created: Date.now() }), { expirationTtl: null });
 
     const responseData = {
       token: returnToken,
@@ -81,19 +69,17 @@ async function handleSendValue(request, env) {
   }
 }
 
-// Qo'shimcha endpointlar (eski usullar uchun saqlab qoldik)
+// Qo'shimcha endpointlar (eski usullar uchun saqlab qoldik, moslashtirilgan)
 async function authInit(request, env) {
   if (request.method !== "POST") return jsonResponse({ error: "Method not allowed" }, 405);
   const body = await request.json().catch(() => ({}));
   if (!body.license) return jsonResponse({ error: "Missing license" }, 400);
 
-  const exists = await env.AUTH_KV.get(`license:${body.license}`);
-  if (!exists) return jsonResponse({ authorized: false }, 401);
-
+  // Check ni o'chirdik, doim true
   const token = crypto.randomUUID().replaceAll("-", "");
-  await env.AUTH_KV.put(`token:${token}`, JSON.stringify({ license: body.license, created: Date.now() }), { expirationTtl: 3600 });
+  await env.AUTH_KV.put(`token:${token}`, JSON.stringify({ created: Date.now() }), { expirationTtl: null });
 
-  return jsonResponse({ authorized: true, token, expires_in: 3600 });
+  return jsonResponse({ authorized: true, token, expires_in: null });  // Muddat yo'q
 }
 
 async function authRuntime(request, env) {
@@ -101,9 +87,7 @@ async function authRuntime(request, env) {
   const body = await request.json().catch(() => ({}));
   if (!body.token || !body.action) return jsonResponse({ allowed: false }, 400);
 
-  const session = await env.AUTH_KV.get(`token:${body.token}`);
-  if (!session) return jsonResponse({ allowed: false, reason: "invalid_session" });
-
+  // Session check ni o'chirdik, doim true
   return jsonResponse({ allowed: true });
 }
 
@@ -118,7 +102,7 @@ async function admin(request, env) {
   if (request.method === "POST") {
     const body = await request.json().catch(() => ({}));
     if (!body.license) return jsonResponse({ error: "Missing license" }, 400);
-    await env.AUTH_KV.put(`license:${body.license}`, "true");
+    await env.AUTH_KV.put(`license:${body.license}`, "true", { expirationTtl: null });  // Muddat yo'q
     return jsonResponse({ success: true });
   }
   return new Response("Admin OK");
