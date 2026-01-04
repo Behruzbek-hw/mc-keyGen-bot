@@ -1,4 +1,4 @@
-// Cloudflare Worker — AdventureCore plugin bilan 100% ISHLAYDIGAN MOSLASHTIRILGAN VERSIYA (Java ga mos, xatolar hal qilingan)
+// Cloudflare Worker — AdventureCore plugin bilan 100% ISHLAYDIGAN YANGILANGAN VERSIYA (KV o'chirilgan, xatolar hal qilingan)
 
 export default {
   async fetch(request, env) {
@@ -29,57 +29,41 @@ export default {
 async function handleSendValue(request, env) {
   try {
     const body = await request.json();
-    console.log("Worker received body: " + JSON.stringify(body));  // Dashboard Logs da ko'rinadi
+    console.log("Worker received body: " + JSON.stringify(body));  // Logs uchun
 
-    let returnToken = crypto.randomUUID().replaceAll("-", "");  // Har doim yangi token generate qilamiz
-    const saltValue = "success";  // Har doim success
+    let returnToken = crypto.randomUUID().replaceAll("-", "");  // Yangi token
+    const saltValue = "success";  // Doim success
 
-    let valid = true;  // Doim true, litsenziya/token check ni o'chirdik – har qanday input uchun ishlaydi
-
-    // License yuborilgan bo'lsa, token generate qilamiz
+    // Har qanday input uchun valid – check yo'q
     if (body.license && typeof body.license === "string") {
-      const licenseKey = body.license.trim();
-      if (licenseKey !== "") {
-        console.log("New token created for license: " + licenseKey);
-      }
+      console.log("New token for license: " + body.license.trim());
+    } else if (body.token && typeof body.token === "string") {
+      returnToken = body.token.trim();  // Eski tokenni qaytar
+      console.log("Using token: " + returnToken);
     }
-    // Token yuborilgan bo'lsa, uni qaytaramiz (validate qilmaymiz)
-    else if (body.token && typeof body.token === "string") {
-      const tokenKey = body.token.trim();
-      if (tokenKey !== "") {
-        returnToken = tokenKey;
-        console.log("Token used: " + tokenKey);
-      }
-    }
-
-    // Har doim KV ga saqlaymiz, muddat yo'q (expirationTtl: null)
-    await env.AUTH_KV.put(`token:${returnToken}`, JSON.stringify({ created: Date.now() }), { expirationTtl: null });
 
     const responseData = {
       token: returnToken,
       salt: saltValue
     };
-    console.log("Worker returning: " + JSON.stringify(responseData));
+    console.log("Returning: " + JSON.stringify(responseData));
 
     return jsonResponse(responseData);
 
   } catch (error) {
-    console.error("Worker critical error: " + error.message);
+    console.error("Error: " + error.message);
     return jsonResponse({ error: "Server error", code: "server_error" }, 500);
   }
 }
 
-// Qo'shimcha endpointlar (eski usullar uchun saqlab qoldik, moslashtirilgan)
+// Boshqa endpointlar (KV siz moslashtirilgan)
 async function authInit(request, env) {
   if (request.method !== "POST") return jsonResponse({ error: "Method not allowed" }, 405);
   const body = await request.json().catch(() => ({}));
   if (!body.license) return jsonResponse({ error: "Missing license" }, 400);
 
-  // Check ni o'chirdik, doim true
   const token = crypto.randomUUID().replaceAll("-", "");
-  await env.AUTH_KV.put(`token:${token}`, JSON.stringify({ created: Date.now() }), { expirationTtl: null });
-
-  return jsonResponse({ authorized: true, token, expires_in: null });  // Muddat yo'q
+  return jsonResponse({ authorized: true, token, expires_in: null });
 }
 
 async function authRuntime(request, env) {
@@ -87,7 +71,6 @@ async function authRuntime(request, env) {
   const body = await request.json().catch(() => ({}));
   if (!body.token || !body.action) return jsonResponse({ allowed: false }, 400);
 
-  // Session check ni o'chirdik, doim true
   return jsonResponse({ allowed: true });
 }
 
@@ -100,10 +83,7 @@ async function admin(request, env) {
   if (auth !== `Bearer ${env.ADMIN_SECRET}`) return new Response("Forbidden", { status: 403 });
 
   if (request.method === "POST") {
-    const body = await request.json().catch(() => ({}));
-    if (!body.license) return jsonResponse({ error: "Missing license" }, 400);
-    await env.AUTH_KV.put(`license:${body.license}`, "true", { expirationTtl: null });  // Muddat yo'q
-    return jsonResponse({ success: true });
+    return jsonResponse({ success: true });  // KV yo'q
   }
   return new Response("Admin OK");
 }
