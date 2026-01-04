@@ -1,4 +1,4 @@
-// Cloudflare Worker — AdventureCore bilan TO‘LIQ VA OXIRGI ISHLAYDIGAN VERSIYA
+// Cloudflare Worker — AdventureCore plugin bilan 100% ISHLAYDIGAN OXIRGI VERSIYA
 
 export default {
   async fetch(request, env) {
@@ -30,45 +30,47 @@ async function handleSendValue(request, env) {
   try {
     const body = await request.json();
 
-    let tokenToReturn = "authenticated";  // dummy token, plugin faqat borligini tekshiradi
-    let saltValue = "success";
+    let returnToken = null;
+    const saltValue = "success";  // Har doim "success:success" bo'ladi
 
-    // License yuborilgan bo‘lsa — tekshirib, yangi token yaratamiz
-    if (body.license) {
-      const licenseKey = body.license.toString().trim();
+    // License yuborilgan bo'lsa
+    if (body.license && typeof body.license === "string" && body.license.trim() !== "") {
+      const licenseKey = body.license.trim();
       const exists = await env.AUTH_KV.get(`license:${licenseKey}`);
       if (!exists) {
         return jsonResponse({ error: "Invalid license", code: "invalid_code" }, 401);
       }
-      // Yangi real token yaratamiz
-      tokenToReturn = crypto.randomUUID().replaceAll("-", "");
-      await env.AUTH_KV.put(`token:${tokenToReturn}`, JSON.stringify({ license: licenseKey }), { expirationTtl: 3600 });
+      // Yangi token yaratamiz
+      returnToken = crypto.randomUUID().replaceAll("-", "");
+      await env.AUTH_KV.put(`token:${returnToken}`, JSON.stringify({ license: licenseKey, created: Date.now() }), { expirationTtl: 3600 });
     }
-
-    // Token yuborilgan bo‘lsa — tekshirib, tasdiqlaymiz
-    else if (body.token) {
-      const session = await env.AUTH_KV.get(`token:${body.token.toString().trim()}`);
+    // Token yuborilgan bo'lsa
+    else if (body.token && typeof body.token === "string" && body.token.trim() !== "") {
+      const tokenKey = body.token.trim();
+      const session = await env.AUTH_KV.get(`token:${tokenKey}`);
       if (!session) {
         return jsonResponse({ error: "Invalid token", code: "invalid_session" }, 401);
       }
-      tokenToReturn = body.token;  // eski tokenni qaytaramiz
-    } else {
-      return jsonResponse({ error: "Bad request", code: "bad_request" }, 400);
+      returnToken = tokenKey;  // Eski tokenni qaytaramiz
+    }
+    // Hech qaysi yo'q
+    else {
+      return jsonResponse({ error: "Missing license or token", code: "bad_request" }, 400);
     }
 
-    // To‘g‘ri JSON format — plugin bu ni parse qilib, "success:success" oladi
+    // Har doim to'g'ri format: {"token": "...", "salt": "success"}
     return jsonResponse({
-      token: tokenToReturn,
+      token: returnToken,
       salt: saltValue
     });
 
   } catch (error) {
-    console.error("Worker error:", error);
+    console.error("Worker xatosi (/sendValue):", error);
     return jsonResponse({ error: "Server error", code: "server_error" }, 500);
   }
 }
 
-// Qo‘shimcha endpointlar
+// Qo'shimcha endpointlar (eski usullar uchun)
 async function authInit(request, env) {
   if (request.method !== "POST") return jsonResponse({ error: "Method not allowed" }, 405);
   const body = await request.json().catch(() => ({}));
@@ -78,7 +80,7 @@ async function authInit(request, env) {
   if (!exists) return jsonResponse({ authorized: false }, 401);
 
   const token = crypto.randomUUID().replaceAll("-", "");
-  await env.AUTH_KV.put(`token:${token}`, JSON.stringify({ license: body.license }), { expirationTtl: 3600 });
+  await env.AUTH_KV.put(`token:${token}`, JSON.stringify({ license: body.license, created: Date.now() }), { expirationTtl: 3600 });
 
   return jsonResponse({ authorized: true, token, expires_in: 3600 });
 }
