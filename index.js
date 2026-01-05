@@ -1,84 +1,119 @@
-// Cloudflare Worker — AdventureCore uchun 3 QATLAMLI MOSLASHTIRILGAN VERSIYA (doim success, 3 ta server roli)
-
 export default {
-  async fetch(request, env) {
-    const url = new URL(request.url);
-    const path = url.pathname;
+  async fetch(req, env) {
+    const url = new URL(req.url);
 
-    if (path === "/sendValue" && request.method === "POST") {
-      return handleSendValue(request);  // Server A va B uchun (initial va refresh)
+    if (url.pathname === "/auth/init") {
+      return authInit(req, env);
     }
 
-    if (path === "/auth/init" && request.method === "POST") {
-      return authInit(request);  // Server A uchun (initial auth)
+    if (url.pathname === "/auth/runtime") {
+      return authRuntime(req, env);
     }
 
-    if (path === "/auth/runtime" && request.method === "POST") {
-      return authRuntime(request);  // Server C uchun (runtime validation)
-    }
-
-    if (path === "/auth/enforce") {
+    if (url.pathname === "/auth/enforce") {
       return authEnforce();
     }
 
-    if (path.startsWith("/admin")) {
-      return new Response("Admin OK");
+    if (url.pathname.startsWith("/admin")) {
+      return admin(req, env);
     }
 
-    return new Response("Not Found", { status: 404 });
+    return new Response("Not found", { status: 404 });
   }
 };
 
-async function handleSendValue(request) {
-  try {
-    const body = await request.json().catch(() => ({}));  // Body bo'sh bo'lsa ham ishlaydi
-    console.log("Received /sendValue: " + JSON.stringify(body));
+// ================= 1. INIT =================
 
-    let returnToken = "fixed-token-for-test";  // Doim shu token (test uchun)
-    const saltValue = "success";  // Doim success
-
-    // Litsenziya yoki token bo'lsa, log qilamiz, lekin check yo'q
-    if (body.license) {
-      console.log("Initial auth for license: " + body.license);
-    } else if (body.token) {
-      returnToken = body.token;  // Refresh: eski tokenni qaytaramiz
-      console.log("Token refresh: " + body.token);
-    }
-
-    const responseData = {
-      token: returnToken,
-      salt: saltValue
-    };
-    console.log("Returning: " + JSON.stringify(responseData));
-    return jsonResponse(responseData);
-  } catch (error) {
-    console.error("Error in /sendValue: " + error.message);
-    return jsonResponse({ error: "Server error", code: "server_error" }, 500);
+async function authInit(req, env) {
+  if (req.method !== "POST") {
+    return json({ error: "method_not_allowed" }, 405);
   }
+
+  const body = await req.json().catch(() => null);
+  if (!body?.license) {
+    return json({ error: "missing_license" }, 400);
+  }
+
+  const exists = await env.AUTH_KV.get(`license:${body.license}`);
+  if (!exists) {
+    return json({ authorized: false }, 401);
+  }
+
+  const token = crypto.randomUUID().replaceAll("-", "");
+
+  await env.AUTH_KV.put(
+    `token:${token}`,
+    JSON.stringify({
+      license: body.license,
+      created: Date.now()
+    }),
+    { expirationTtl: 3600 }
+  );
+
+  return json({
+    authorized: true,
+    token,
+    expires_in: 3600
+  });
 }
 
-async function authInit(request) {
-  const body = await request.json().catch(() => ({}));
-  console.log("Received /auth/init: " + JSON.stringify(body));
+// ================= 2. RUNTIME =================
 
-  const token = "fixed-token-for-test";  // Doim shu
-  return jsonResponse({ authorized: true, token, expires_in: null });
+async function authRuntime(req, env) {
+  if (req.method !== "POST") {
+    return json({ allowed: false }, 405);
+  }
+
+  const body = await req.json().catch(() => null);
+  if (!body?.token || !body?.action) {
+    return json({ allowed: false }, 400);
+  }
+
+  const session = await env.AUTH_KV.get(`token:${body.token}`);
+  if (!session) {
+    return json({ allowed: false, reason: "invalid_session" });
+  }
+
+  return json({
+    allowed: true
+  });
 }
 
-async function authRuntime(request) {
-  const body = await request.json().catch(() => ({}));
-  console.log("Received /auth/runtime: " + JSON.stringify(body));
-
-  return jsonResponse({ allowed: true });  // Doim true (validation muvaffaqiyatli)
-}
+// ================= 3. ENFORCE =================
 
 function authEnforce() {
-  return jsonResponse({ action: "rollback", target: "spawn" });
+  return json({
+    action: "rollback",
+    target: "spawn"
+  });
 }
 
-function jsonResponse(data, status = 200) {
+// ================= ADMIN =================
+
+async function admin(req, env) {
+  const auth = req.headers.get("Authorization");
+  if (auth !== `Bearer ${env.ADMIN_SECRET}`) {
+    return new Response("Forbidden", { status: 403 });
+  }
+
+  if (req.method === "POST") {
+    const body = await req.json();
+    if (!body?.license) {
+      return json({ error: "missing_license" }, 400);
+    }
+
+    await env.AUTH_KV.put(`license:${body.license}`, "true");
+    return json({ success: true });
+  }
+
+  return new Response("Admin OK");
+}
+
+// ================= HELPER =================
+
+function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { "Content-Type": "application/json; charset=utf-8" }
+    headers: { "Content-Type": "application/json" }
   });
 }
